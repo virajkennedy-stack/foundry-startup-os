@@ -1,0 +1,6 @@
+{
+  "name": "Foundry",
+  "description": "Turn Ideas Into Reality. A general-purpose AI workspace for developing ideas, businesses, products, and projects.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,93 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && (
+        (resource != null && (resource.data.ownerId == request.auth.uid || resource.data.userId == request.auth.uid)) ||
+        (request.resource != null && (request.resource.data.ownerId == request.auth.uid || request.resource.data.userId == request.auth.uid))
+      );
+    }
+
+    // Helper to check plan modification security
+    function isUnprivilegedPlanChange() {
+      return request.resource != null &&
+        'plan' in request.resource.data &&
+        request.resource.data.plan == 'PRO' &&
+        (resource == null || !('plan' in resource.data) || resource.data.plan != 'PRO');
+    }
+
+    // User-scoped documents and subcollections
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow delete: if isOwner(userId);
+      allow create: if isOwner(userId) && !isUnprivilegedPlanChange();
+      allow update: if isOwner(userId) && !isUnprivilegedPlanChange();
+
+      match /conversations/{conversationId} {
+        allow read, delete: if isOwner(userId) || isDocOwner();
+        allow create, update: if (isOwner(userId) || isDocOwner()) &&
+          (request.resource == null || request.resource.data.ownerId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+
+        match /messages/{messageId} {
+          allow read, delete: if isOwner(userId) || isDocOwner();
+          allow create, update: if (isOwner(userId) || isDocOwner()) &&
+            (request.resource == null || request.resource.data.ownerId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+        }
+      }
+
+      match /projects/{projectId} {
+        allow read, delete: if isOwner(userId) || isDocOwner();
+        allow create, update: if (isOwner(userId) || isDocOwner()) &&
+          (request.resource == null || request.resource.data.ownerId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+      }
+
+      match /{allSubcollections=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Top-level conversations collection
+    match /conversations/{conversationId} {
+      allow read, delete: if isAuthenticated() && (resource == null || resource.data.ownerId == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow create, update: if isAuthenticated() && (request.resource.data.ownerId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+
+      match /messages/{messageId} {
+        allow read, delete: if isAuthenticated() && (resource == null || resource.data.ownerId == request.auth.uid || resource.data.userId == request.auth.uid);
+        allow create, update: if isAuthenticated() && (request.resource.data.ownerId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+      }
+    }
+
+    // Top-level messages collection
+    match /messages/{messageId} {
+      allow read, delete: if isAuthenticated() && (resource == null || resource.data.ownerId == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow create, update: if isAuthenticated() && (request.resource.data.ownerId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+    }
+
+    // Top-level projects collection
+    match /projects/{projectId} {
+      allow read, delete: if isAuthenticated() && (resource == null || resource.data.ownerId == request.auth.uid || resource.data.userId == request.auth.uid);
+      allow create, update: if isAuthenticated() && (request.resource.data.ownerId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+
+      match /{allSubcollections=**} {
+        allow read, delete: if isAuthenticated() && (resource == null || resource.data.ownerId == request.auth.uid || resource.data.userId == request.auth.uid);
+        allow create, update: if isAuthenticated() && (request.resource.data.ownerId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+      }
+    }
+
+    // Default deny all other documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
